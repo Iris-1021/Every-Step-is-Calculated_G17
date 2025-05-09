@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>York Safety Layer Map - Compare + Full Interactive Layers</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-compare/v0.4.0/mapbox-gl-compare.js"></script>
+  <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-compare/v0.4.0/mapbox-gl-compare.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; }
+    #comparison-container { position: absolute; top: 0; bottom: 0; width: 100%; }
+    #map-left, #map-right { position: absolute; top: 0; bottom: 0; width: 100%; }
+    .legend-toggle, .legend, .menu, .reset-view-panel {
+      position: absolute;
+      z-index: 3;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+    }
+    .legend-toggle {
+      bottom: 12px;
+      left: 10px;
+      background: white;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0,0,0,0.15);
+    }
+    .legend, .menu {
+      background: rgba(255,255,255,0.85);
+      padding: 12px;
+      border-radius: 4px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.15);
+    }
+    .menu label {
+      margin-bottom: 8px;
+      display: block;
+    }
+    .menu select {
+      margin-bottom: 12px;
+    }
+    .legend {
+      position: absolute;
+      bottom: 45px;
+      left: 10px;
+      width: 140px;
+      max-height: 240px;
+      overflow-y: auto;
+      background: rgba(255, 255, 255, 0.7);
+      padding: 10px 12px 8px 12px;
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.18);
+      border-radius: 6px;
+      z-index: 1;
+      display: block;
+      transition: none;
+    }
+    .legend-toggle {
+      position: absolute;
+      bottom: 12px;
+      left: 10px;
+      width: 40px;
+      height: 40px;
+      background: white;
+      border-radius: 20px;
+      padding: 8px;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0,0,0,0.15);
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .legend-toggle svg {
+      width: 24px;
+      height: 24px;
+      fill: #666;
+    }
+    .legend-content {
+      opacity: 1 !important;
+      transition: none !important;
+      height: 100%;
+      overflow-y: auto;
+    }
+    .legend.expanded .legend-content {
+      opacity: 1;
+    }
+    .legend .legend-section {
+      margin-bottom: 18px;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .legend .legend-section:last-child { 
+      margin-bottom: 0;
+    }
+    .legend .legend-title {
+      font-weight: bold;
+      color: #111;
+      margin-bottom: 6px;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .legend-row:last-child {
+      margin-bottom: 0;
+    }
+    .legend-color {
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      margin-right: 10px;
+      border: 1px solid #bbb;
+      box-sizing: border-box;
+      background: #fff;
+      flex-shrink: 0;
+    }
+    .legend-value {
+      color: #222;
+      font-size: 12px;
+      font-weight: normal;
+      letter-spacing: 0.2px;
+    }
+    .slider-container { margin-top: 5px; }
+    .slider-row { margin-bottom: 10px; }
+    .slider-row label { display: block; font-size: 12px; }
+    .reset-view-panel {
+      position: absolute;
+      bottom: 20px;
+      right: 10px;
+      background: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.15);
+      z-index: 2;
+    }
+    .reset-view-panel button {
+      padding: 6px 10px;
+      font-size: 12px;
+      background-color: #f0f0f0;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .reset-view-panel button:hover { background-color: #ddd; }
+    .radar-chart {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 15px;
+      border-radius: 4px;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.15);
+      z-index: 1;
+      width: 220px;
+    }
+    .radar-chart h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #333;
+      text-align: center;
+    }
+    .radar-chart canvas {
+      width: 100%;
+      height: 200px;
+    }
+  </style>
+</head>
+<body>
+<div id="comparison-container">
+  <div id="map-left"></div>
+  <div id="map-right"></div>
+</div>
+<div class="menu">
+  <h3>Interactive Map Controls</h3>
+  <p>Left Map: Shows single safety factors (bus, light, nightlife, CCTV, crime)</p>
+  <p>Right Map: Shows combined safety score</p>
+  <p>Click on any road to see detailed points of interest</p>
+  <label for="layerSelect"><strong>Select the top layer:</strong></label><br>
+  <select id="layerSelect" onchange="bringToFront(this.value)">
+    <option value="bus">Bus</option>
+    <option value="light">Light</option>
+    <option value="nightlife">Nightlife</option>
+    <option value="CCTV">CCTV</option>
+    <option value="crime" selected>Crime</option>
+  </select>
+  <div class="slider-container" id="sliderContainer"></div>
+</div>
+<div class="legend" id="legend-box">
+  <div class="legend-content" id="legend-content"></div>
+</div>
+<div class="reset-view-panel">
+  <button onclick="resetView()">Reset View</button>
+</div>
+<div class="radar-chart">
+  <h3>Safety Factors Weights</h3>
+  <canvas id="radarChart"></canvas>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiY2FzYXRlc3QiLCJhIjoiY201ejZuMHN0MDExczJscXNwankwcWVzYyJ9.gqXja3EeV92I42mftXKgXg';
+
+const mapLeft = new mapboxgl.Map({ container: 'map-left', style: 'mapbox://styles/mapbox/dark-v11', center: [-1.08, 53.96], zoom: 13 });
+const mapRight = new mapboxgl.Map({ container: 'map-right', style: 'mapbox://styles/mapbox/light-v11', center: [-1.08, 53.96], zoom: 13 });
+
+new mapboxgl.Compare(mapLeft, mapRight, '#comparison-container');
+
+const layers = [
+  { id: 'bus', name: 'bus_wgs84.geojson', field: 'bus_density', bins: [0.03, 0.1], color: ['#c6dbef', '#6baed6', '#2171b5'], opacity: 0.5, weight: 0.2 },
+  { id: 'light', name: 'lighting_wgs84.geojson', field: 'light_density', bins: [0.1, 0.9], color: ['#d9f0a3', '#78c679', '#238443'], opacity: 0.4, weight: 0.2 },
+  { id: 'nightlife', name: 'nightlife_wgs84.geojson', field: 'nightlife_density', bins: [0.01, 0.1], color: ['#fbb4ae', '#f768a1', '#ae017e'], opacity: 0.4, weight: 0.2 },
+  { id: 'CCTV', name: 'cctv_wgs84.geojson', field: 'cctv_density', bins: [0.003, 0.05], color: ['#f2f0f7', '#cbc9e2', '#9e9ac8'], opacity: 0.3, weight: 0.2 },
+  { id: 'crime', name: 'crime_wgs84.geojson', field: 'crime_density', bins: [0.05, 1.0], color: ['#fee391', '#fe9929', '#cc4c02'], opacity: 0.6, weight: 0.2 }
+];
+
+const pointFiles = {
+  bus: '84_bus_point.geojson',
+  light: '84_light_point.geojson',
+  nightlife: '84_nightlife_point.geojson',
+  CCTV: '84_CCTV_point.geojson',
+  crime: '84_crime_point.geojson'
+};
+
+mapLeft.on('load', () => {
+  const container = document.getElementById('sliderContainer');
+  layers.forEach(layer => {
+    mapLeft.addSource(layer.id, { type: 'geojson', data: layer.name });
+    mapLeft.addLayer({
+      id: layer.id,
+      type: 'line',
+      source: layer.id,
+      layout: { visibility: 'visible' },
+      paint: {
+        'line-width': 2.5,
+        'line-opacity': layer.opacity,
+        'line-color': [
+          'case',
+          ['==', ['get', layer.field], null], 'rgba(0,0,0,0)',
+          ['<=', ['get', layer.field], 0], 'rgba(0,0,0,0)',
+          ['<=', ['get', layer.field], layer.bins[0]], layer.color[0],
+          ['<=', ['get', layer.field], layer.bins[1]], layer.color[1],
+          layer.color[2]
+        ],
+        'line-blur': 0.4
+      }
+    });
+
+    mapLeft.on('mouseenter', layer.id, () => {
+      mapLeft.getCanvas().style.cursor = 'pointer';
+    });
+    mapLeft.on('mouseleave', layer.id, () => {
+      mapLeft.getCanvas().style.cursor = '';
+    });
+
+    const row = document.createElement('div');
+    row.className = 'slider-row';
+    row.innerHTML = `
+      <label>
+        <input type="checkbox" checked onchange="toggleLayer('${layer.id}', this.checked); updateLegendBox()"> ${capitalize(layer.id)} Opacity:
+        <input type="range" min="0" max="1" step="0.01" value="${layer.opacity}" 
+          oninput="updateOpacity('${layer.id}', this.value); document.getElementById('${layer.id}-val').textContent = Mathround(this.value * 100) + '%'">
+        <span id="${layer.id}-val">${Math.round(layer.opacity * 100)}%</span>
+      </label>
+    `;
+    container.appendChild(row);
+
+    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+    mapLeft.on('mousemove', layer.id, (e) => {
+      const props = e.features[0].properties;
+      const name = props.name_1 || props.name || props.display_name || props.display_na || props.street || 'Unnamed Street';
+      // 过滤掉York等行政区名
+      let displayName = name;
+      if (displayName && (displayName === 'York' || displayName.includes('York, York and North Yorkshire'))) {
+        displayName = 'Unnamed Street';
+      }
+      popup.setLngLat(e.lngLat)
+           .setHTML(`<strong>${displayName}</strong>`)
+           .addTo(mapLeft);
+    });
+    mapLeft.on('mouseleave', layer.id, () => popup.remove());
+
+    mapLeft.on('click', layer.id, async (e) => {
+      const coords = e.lngLat;
+      const buffer = 0.002;
+      const bbox = [
+        [coords.lng - buffer, coords.lat - buffer],
+        [coords.lng + buffer, coords.lat + buffer]
+      ];
+      mapLeft.fitBounds(bbox, { padding: 100, duration: 1000 });
+      mapRight.fitBounds(bbox, { padding: 100, duration: 1000 });
+
+      const tempLayerId = `${layer.id}-temp-points`;
+
+      // 移除现有的POI图层
+      if (mapLeft.getLayer(tempLayerId)) {
+        mapLeft.removeLayer(tempLayerId);
+      }
+      if (mapLeft.getSource(tempLayerId)) {
+        mapLeft.removeSource(tempLayerId);
+      }
+
+      // 加载并显示POI点
+      const response = await fetch(pointFiles[layer.id]);
+      const data = await response.json();
+      const filtered = {
+        type: 'FeatureCollection',
+        features: data.features.filter(f => {
+          const [lng, lat] = f.geometry.coordinates;
+          return lng >= bbox[0][0] && lng <= bbox[1][0] && lat >= bbox[0][1] && lat <= bbox[1][1];
+        })
+      };
+
+      mapLeft.addSource(tempLayerId, { type: 'geojson', data: filtered });
+      mapLeft.addLayer({
+        id: tempLayerId,
+        type: 'circle',
+        source: tempLayerId,
+        paint: {
+          'circle-radius': 4,
+          'circle-color': layer.color[2],
+          'circle-opacity': 0.8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1
+        }
+      });
+
+      // 添加POI点的点击事件
+      mapLeft.on('click', tempLayerId, (e) => {
+        const props = e.features[0].properties;
+        const name = props.name || 'Unnamed';
+        new mapboxgl.Popup()
+          .setLngLat(e.lngLat)
+          .setHTML(`<strong>${layer.id} point</strong><br>${name}`)
+          .addTo(mapLeft);
+      });
+
+      // 添加鼠标悬停效果
+      mapLeft.on('mouseenter', tempLayerId, () => {
+        mapLeft.getCanvas().style.cursor = 'pointer';
+      });
+
+      mapLeft.on('mouseleave', tempLayerId, () => {
+        mapLeft.getCanvas().style.cursor = '';
+      });
+    });
+  });
+  updateLegendBox();
+});
+
+mapRight.on('load', () => {
+  mapRight.addSource('safety', { 
+    type: 'geojson', 
+    data: 'Final_safety_score.geojson',
+    generateId: true
+  });
+  
+  mapRight.addLayer({
+    id: 'safety-line',
+    type: 'line',
+    source: 'safety',
+    paint: {
+      'line-width': 2.5,
+      'line-opacity': 0.6,
+      'line-color': [
+        'interpolate',
+        ['linear'],
+        ['get', 'safety_score'],
+        0, '#d73027',
+        0.4, '#f46d43',
+        0.6, '#fee08b',
+        0.8, '#91cf60',
+        1, '#1a9850'
+      ]
+    }
+  });
+
+  // 添加鼠标悬停时的路名显示
+  const safetyPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+
+  mapRight.on('mousemove', 'safety-line', (e) => {
+    const props = e.features[0].properties;
+    const score = props.safety_score;
+    
+    // 从左侧地图获取道路名称
+    const features = mapLeft.queryRenderedFeatures(e.point, { layers: ['bus', 'light', 'nightlife', 'CCTV', 'crime'] });
+    let roadName = 'Unnamed Street';
+    
+    if (features && features.length > 0) {
+      const feature = features[0];
+      roadName = feature.properties.name_1 || feature.properties.name || 
+                 feature.properties.display_name || feature.properties.display_na || 
+                 feature.properties.street || 'Unnamed Street';
+    }
+
+    safetyPopup
+      .setLngLat(e.lngLat)
+      .setHTML(`<strong>${roadName}</strong><br>Safety Score: ${score}`)
+      .addTo(mapRight);
+  });
+
+  mapRight.on('mouseleave', 'safety-line', () => {
+    mapRight.getCanvas().style.cursor = '';
+    safetyPopup.remove();
+  });
+
+  mapRight.on('mouseenter', 'safety-line', () => {
+    mapRight.getCanvas().style.cursor = 'pointer';
+  });
+
+  mapRight.on('click', 'safety-line', (e) => {
+    if (e.features && e.features.length > 0) {
+      const coords = e.lngLat;
+      const buffer = 0.002;
+      const bbox = [
+        [coords.lng - buffer, coords.lat - buffer],
+        [coords.lng + buffer, coords.lat + buffer]
+      ];
+      mapRight.fitBounds(bbox, { padding: 100, duration: 1000 });
+
+      const props = e.features[0].properties;
+      const score = props.safety_score || 0;
+      // 从左侧地图的图层中获取道路名称
+      const features = mapLeft.queryRenderedFeatures(e.point, { layers: ['bus', 'light', 'nightlife', 'CCTV', 'crime'] });
+      let roadName = 'Unnamed Street';
+      if (features && features.length > 0) {
+        const feature = features[0];
+        roadName = feature.properties.name_1 || feature.properties.name || feature.properties.display_name || 
+                  feature.properties.display_na || feature.properties.street || 'Unnamed Street';
+      }
+      // 更新雷达图数据，正负影响分开
+      const positiveScores = {
+        'bus': props.bus_score || 0,
+        'light': props.light_score || 0,
+        'CCTV': props.cctv_score || 0
+      };
+      const negativeScores = {
+        'crime': props.crime_score || 0,
+        'nightlife': props.night_score || 0
+      };
+      radarChart.data.datasets[0].data = [
+        positiveScores['bus'],
+        positiveScores['light'],
+        0,
+        positiveScores['CCTV'],
+        0
+      ];
+      radarChart.data.datasets[1].data = [
+        0,
+        0,
+        negativeScores['nightlife'],
+        0,
+        negativeScores['crime']
+      ];
+      radarChart.update();
+      new mapboxgl.Popup()
+        .setLngLat(e.lngLat)
+        .setHTML(`<strong>${roadName}</strong><br>Safety Score: ${score.toFixed(2)}`)
+        .addTo(mapRight);
+    }
+  });
+});
+
+function bringToFront(layerId) {
+  if (mapLeft.getLayer(layerId)) mapLeft.moveLayer(layerId);
+}
+function updateOpacity(id, value) {
+  mapLeft.setPaintProperty(id, 'line-opacity', parseFloat(value));
+}
+function toggleLayer(id, visible) {
+  mapLeft.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+}
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+function updateLegendBox() {
+  const legendContainer = document.getElementById('legend-content');
+  legendContainer.innerHTML = '';
+  let hasVisible = false;
+  if (typeof layers === 'undefined' || !Array.isArray(layers) || layers.length === 0) {
+    // 静态兜底内容
+    legendContainer.innerHTML = `
+      <div class="legend-section">
+        <div class="legend-title">CCTV</div>
+        <div class="legend-row"><span class="legend-color" style="background:rgba(255,255,255,1);"></span><span class="legend-value">None</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:#f2f0f7;"></span><span class="legend-value">Low</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:#cbc9e2;"></span><span class="legend-value">Medium</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:#9e9ac8;"></span><span class="legend-value">High</span></div>
+      </div>
+      <div class="legend-section">
+        <div class="legend-title">Crime</div>
+        <div class="legend-row"><span class="legend-color" style="background:rgba(255,255,255,1);"></span><span class="legend-value">None</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:#fee391;"></span><span class="legend-value">Low</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:#fe9929;"></span><span class="legend-value">Medium</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:#cc4c02;"></span><span class="legend-value">High</span></div>
+      </div>
+    `;
+    return;
+  }
+  layers.forEach(layer => {
+    let visibility = 'visible';
+    try {
+      visibility = mapLeft && mapLeft.getLayoutProperty ? mapLeft.getLayoutProperty(layer.id, 'visibility') : 'visible';
+    } catch (e) {}
+    if (visibility === 'visible') {
+      hasVisible = true;
+      const section = document.createElement('div');
+      section.className = 'legend-section';
+      section.innerHTML = `
+        <div class="legend-title">${capitalize(layer.id)}</div>
+        <div class="legend-row"><span class="legend-color" style="background:rgba(255,255,255,1);"></span><span class="legend-value">None</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[0]};"></span><span class="legend-value">Low</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[1]};"></span><span class="legend-value">Medium</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[2]};"></span><span class="legend-value">High</span></div>
+      `;
+      legendContainer.appendChild(section);
+    }
+  });
+  // 如果没有任何可见图层，强制显示全部
+  if (!hasVisible) {
+    layers.forEach(layer => {
+      const section = document.createElement('div');
+      section.className = 'legend-section';
+      section.innerHTML = `
+        <div class="legend-title">${capitalize(layer.id)}</div>
+        <div class="legend-row"><span class="legend-color" style="background:rgba(255,255,255,1);"></span><span class="legend-value">None</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[0]};"></span><span class="legend-value">Low</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[1]};"></span><span class="legend-value">Medium</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[2]};"></span><span class="legend-value">High</span></div>
+      `;
+      legendContainer.appendChild(section);
+    });
+  }
+}
+function resetView() {
+  mapLeft.flyTo({ center: [-1.08, 53.96], zoom: 13 });
+  mapRight.flyTo({ center: [-1.08, 53.96], zoom: 13 });
+  updateLegendBox();
+}
+
+// 修改雷达图配置
+const radarCtx = document.getElementById('radarChart').getContext('2d');
+const radarChart = new Chart(radarCtx, {
+  type: 'radar',
+  data: {
+    labels: ['Bus', 'Light', 'Nightlife', 'CCTV', 'Crime'],
+    datasets: [
+      {
+        label: 'Positive Factors',
+        data: [0, 0, 0, 0, 0],
+        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: 'rgba(54, 162, 235, 1)',
+        pointRadius: 4,
+        pointLabel: {
+          display: true,
+          font: {
+            size: 12
+          }
+        }
+      },
+      {
+        label: 'Negative Factors',
+        data: [0, 0, 0, 0, 0],
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+        pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: 'rgba(255, 99, 132, 1)',
+        pointRadius: 4,
+        pointLabel: {
+          display: true,
+          font: {
+            size: 12
+          }
+        }
+      }
+    ]
+  },
+  options: {
+    scales: {
+      r: {
+        beginAtZero: true,
+        max: 1,
+        ticks: {
+          stepSize: 0.2,
+          callback: function(value) {
+            return value.toFixed(1);
+          }
+        }
+      }
+    },
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `${context.label}: ${context.raw.toFixed(2)}`;
+          }
+        }
+      },
+      datalabels: {
+        display: true,
+        color: '#000',
+        font: {
+          size: 12,
+          weight: 'bold'
+        },
+        formatter: function(value) {
+          return value.toFixed(2);
+        }
+      }
+    }
+  }
+});
+
+// 在页面加载后和脚本末尾都强制调用 updateLegendBox
+window.addEventListener('DOMContentLoaded', function() {
+  if (typeof updateLegendBox === 'function') updateLegendBox();
+});
+setTimeout(function() {
+  if (typeof updateLegendBox === 'function') updateLegendBox();
+}, 1000);
+</script>
+</body>
+</html>
