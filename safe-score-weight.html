@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>York Safety Layer Map</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-compare/v0.4.0/mapbox-gl-compare.js"></script>
+  <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-compare/v0.4.0/mapbox-gl-compare.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+
+<style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    #main-container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+    #sidebar {
+      width: 16.5%;
+      background: rgba(50, 50, 50, 0.95);
+      padding: 16px 12px;
+      box-shadow: 2px 0 6px rgba(0,0,0,0.1);
+      overflow-y: auto;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #map-area {
+      flex: 1;
+      position: relative;
+    }
+    #comparison-container {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1;
+    }
+    #map-left, #map-right {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+    }
+    .menu, .radar-chart {
+      background: rgba(80,80,80,0.4);
+      color: #f0f0f0;
+      padding: 10px 10px 8px 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0,0,0,0.15);
+      font-size: 11px;
+    }
+    .menu h3 {
+      margin-top: 0;
+    }
+    .menu select {
+      width: 100%;
+      margin-top: 0;
+      font-size: 10px;
+    }
+    .menu label {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .slider-container {
+      margin-top: 10px;
+    }
+    .slider-row {
+      margin-bottom: 4px;
+      padding: 2px 0;
+    }
+    .slider-row label {
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .slider-row input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 10px;
+      border-radius: 5px;
+      background: linear-gradient(to right, #e0e0e0, #c0c0c0);
+      outline: none;
+      transition: background 0.3s ease-in-out;
+    }
+    .slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 2px solid #888;
+      cursor: pointer;
+      box-shadow: 0 0 3px rgba(0,0,0,0.3);
+      transition: transform 0.2s ease;
+    }
+    .slider-row input[type="range"]:hover::-webkit-slider-thumb {
+      transform: scale(1.1);
+    }
+   
+    .slider-container .slider-row:nth-of-type(1) input[type="range"] {
+    background: linear-gradient(to right, #c6dbef, #6baed6, #2171b5); /* bus */
+    }
+    .slider-container .slider-row:nth-of-type(2) input[type="range"] {
+     background: linear-gradient(to right, #d9f0a3, #78c679, #238443); /* light */
+    }
+    .slider-container .slider-row:nth-of-type(3) input[type="range"] {
+    background: linear-gradient(to right, #fbb4ae, #f768a1, #ae017e); /* nightlife */
+    }
+    .slider-container .slider-row:nth-of-type(4) input[type="range"] {
+    background: linear-gradient(to right, #f2f0f7, #cbc9e2, #9e9ac8); /* CCTV */
+    }
+    .slider-container .slider-row:nth-of-type(5) input[type="range"] {
+    background: linear-gradient(to right, #fee391, #fe9929, #cc4c02); /* crime */
+    }
+   
+    .slider-container .slider-row input[type="checkbox"] {
+    accent-color: #222222;
+    }
+
+    .legend {
+      position: absolute;
+      bottom: 62px;
+      left: 20px;
+      background: rgba(255,255,255,0.9);
+      box-shadow: 0 0 6px rgba(0,0,0,0.2);
+      z-index: 998;
+      border-radius: 6px;
+      padding: 6px 8px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .legend.show {
+      display: flex;
+    }
+    .legend-toggle {
+      position: absolute;
+      bottom: 28px;
+      left: 40px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+      cursor: pointer;
+      box-shadow: 0 0 4px rgba(0,0,0,0.1);
+      z-index: 999;
+    }
+    .legend .legend-title {
+      font-weight: bold;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .legend-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 5px;
+      border: 1px solid #aaa;
+    }
+    .legend-value {
+      font-size: 10px;
+    }
+    .reset-view-panel {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(255,255,255,0.9);
+      padding: 8px;
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(0,0,0,0.2);
+      cursor: pointer;
+      z-index: 5;
+    }
+    .reset-view-panel i {
+      font-size: 18px;
+      color: #444;
+    }
+    .radar-chart h3 {
+      color: #fff;
+      margin: 0 0 6px 0;
+      font-size: 12px;
+      text-align: center;
+    }
+    .radar-chart canvas {
+      background-color: rgba(255, 255, 255, 0.05);
+      width: 100%;
+      height: 200px;
+    }
+    
+</style>
+
+</head>
+<body>
+  <div id="main-container">
+    <div id="sidebar">
+    <div style="
+  font-size: 13px;
+  font-weight: 600;
+  color: #F2CFB9;
+  text-align: center;
+  margin: 4px 0 2px 0;
+  line-height: 1.4;
+">
+  Measuring Insecurity:<br>Urban Road Safety Map
+</div>
+      <div class="menu">
+        <label for="layerSelect"><strong>Select top layer:</strong></label>
+        <select id="layerSelect" onchange="bringToFront(this.value)" style="font-size: 12px;">
+          <option value="bus">Transit Stops</option>
+          <option value="light">Light</option>
+          <option value="nightlife">Nightlife Venues</option>
+          <option value="CCTV">CCTV</option>
+          <option value="crime" selected>Crime</option>
+        </select>
+        <div class="slider-container" id="sliderContainer"></div>
+      </div>
+      <div class="radar-chart"> 
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #fff; line-height: 1.4;">
+        Select a route on the right-hand map to view the Safety Factor Weights.
+        </p>
+        <canvas id="radarChart"></canvas>
+      </div>
+
+    </div>
+    <div id="map-area">
+      <div id="comparison-container">
+        <div id="map-left"></div>
+        <div id="map-right"></div>
+
+        <div style="
+          position: absolute;
+          top: 20px;
+          left: 25%;
+          transform: translateX(-50%);
+          z-index: 10;
+          background: rgba(0,0,0,0.7);
+          padding: 6px 14px;
+          border-radius: 6px;
+          font-size: 16px;
+          font-weight: 600;
+          font-family: 'Segoe UI', sans-serif;
+          color: #fff;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.15);
+        ">Single Safety Factors Map</div>
+
+
+        <div style="
+          position: absolute;
+          top: 20px;
+          left: 75%;
+          transform: translateX(-50%);
+          z-index: 10;
+          background: rgba(255,255,255,0.85);
+          padding: 6px 14px;
+          border-radius: 6px;
+          font-size: 16px;
+          font-weight: 600;
+          font-family: 'Segoe UI', sans-serif;
+          color: #000;         
+          box-shadow: 0 1px 5px rgba(0,0,0,0.15);
+          white-space: nowrap;
+        ">Integrated Safety Score Map</div>
+      </div>
+
+      <div class="legend-toggle" onclick="document.getElementById('legend-box').classList.toggle('show')">i</div>
+      <div class="legend" id="legend-box">
+        <div class="legend-content" id="legend-content">
+            
+        </div>
+      </div>
+      <div class="reset-view-panel" onclick="resetView()">
+        <i class="fas fa-location-arrow"></i>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoiY2FzYXRlc3QiLCJhIjoiY201ejZuMHN0MDExczJscXNwankwcWVzYyJ9.gqXja3EeV92I42mftXKgXg';
+
+const mapLeft = new mapboxgl.Map({ container: 'map-left', style: 'mapbox://styles/mapbox/dark-v11', center: [-1.08, 53.96], zoom: 12 });
+const mapRight = new mapboxgl.Map({ container: 'map-right', style: 'mapbox://styles/mapbox/light-v11', center: [-1.08, 53.96], zoom: 12 });
+
+new mapboxgl.Compare(mapLeft, mapRight, '#comparison-container');
+
+const layers = [
+  { id: 'bus', name: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/bus_wgs84.geojson', field: 'bus_density', bins: [0.03, 0.1], color: ['#c6dbef', '#6baed6', '#2171b5'], opacity: 0.5, weight: 0.2 },
+  { id: 'light', name: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/lighting_wgs84.geojson', field: 'light_density', bins: [0.1, 0.9], color: ['#d9f0a3', '#78c679', '#238443'], opacity: 0.4, weight: 0.2 },
+  { id: 'nightlife', name: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/nightlife_wgs84.geojson', field: 'nightlife_density', bins: [0.01, 0.1], color: ['#fbb4ae', '#f768a1', '#ae017e'], opacity: 0.4, weight: 0.2 },
+  { id: 'CCTV', name: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/cctv_wgs84.geojson', field: 'cctv_density', bins: [0.003, 0.05], color: ['#f2f0f7', '#cbc9e2', '#9e9ac8'], opacity: 0.3, weight: 0.2 },
+  { id: 'crime', name: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/crime_wgs84.geojson', field: 'crime_density', bins: [0.05, 1.0], color: ['#fee391', '#fe9929', '#cc4c02'], opacity: 0.6, weight: 0.2 }
+];
+
+const pointDisplayNames = {
+  bus: 'Transit Stop',
+  light: 'Light',
+  nightlife: 'Nightlife Venue',
+  CCTV: 'CCTV',
+  crime: 'Crime Report'
+};
+
+const pointFiles = {
+  bus: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/84_bus_point.geojson',
+  light: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/84_light_point.geojson',
+  nightlife: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/84_nightlife_point.geojson',
+  CCTV: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/84_CCTV_point.geojson',
+  crime: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/84_crime_point.geojson'
+};
+
+mapLeft.on('load', () => {
+  const container = document.getElementById('sliderContainer');
+
+  layers.forEach(layer => {
+    mapLeft.addSource(layer.id, { type: 'geojson', data: layer.name });
+
+    mapLeft.addLayer({
+      id: layer.id,
+      type: 'line',
+      source: layer.id,
+      layout: { visibility: 'visible' },
+      paint: {
+        'line-width': 2.5,
+        'line-opacity': layer.opacity,
+        'line-color': [
+          'case',
+          ['==', ['get', layer.field], null], 'rgba(0,0,0,0)',
+          ['<=', ['get', layer.field], 0], 'rgba(0,0,0,0)',
+          ['<=', ['get', layer.field], layer.bins[0]], layer.color[0],
+          ['<=', ['get', layer.field], layer.bins[1]], layer.color[1],
+          layer.color[2]
+        ],
+        'line-blur': 0.4
+      }
+    });
+
+    mapLeft.on('mouseenter', layer.id, () => {
+      mapLeft.getCanvas().style.cursor = 'pointer';
+    });
+    mapLeft.on('mouseleave', layer.id, () => {
+      mapLeft.getCanvas().style.cursor = '';
+    });
+
+     const row = document.createElement('div');
+     row.className = 'slider-row';
+     row.innerHTML = `
+       <div class="slider-label-row">
+         <label>
+           <input type="checkbox" checked onchange="toggleLayer('${layer.id}', this.checked); updateLegendBox()"> 
+           ${layer.id === 'bus' ? 'Transit Stops' : (layer.id === 'nightlife' ? 'Nightlife Venues' : capitalize(layer.id))}
+         </label>
+      </div>
+      <input type="range" min="0" max="1" step="0.01" value="${layer.opacity}" 
+        oninput="updateOpacity('${layer.id}', this.value)">
+`;
+
+    container.appendChild(row);
+
+    const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+    mapLeft.on('mousemove', layer.id, (e) => {
+      const props = e.features[0].properties;
+      const name = props.name_1 || props.name || props.display_name || props.display_na || props.street || 'Unnamed Street';
+
+      let displayName = name;
+      if (displayName && (displayName === 'York' || displayName.includes('York, York and North Yorkshire'))) {
+        displayName = 'Unnamed Street';
+      }
+      popup.setLngLat(e.lngLat)
+           .setHTML(`<strong>${displayName}</strong>`)
+           .addTo(mapLeft);
+    });
+    mapLeft.on('mouseleave', layer.id, () => popup.remove());
+
+    mapLeft.on('click', layer.id, async (e) => {
+      const coords = e.lngLat;
+      const buffer = 0.002;
+      const bbox = [
+        [coords.lng - buffer, coords.lat - buffer],
+        [coords.lng + buffer, coords.lat + buffer]
+      ];
+      mapLeft.fitBounds(bbox, { padding: 100, duration: 1000 });
+      mapRight.fitBounds(bbox, { padding: 100, duration: 1000 });
+
+      const tempLayerId = `${layer.id}-temp-points`;
+
+      // delete original POI lawyer
+      if (mapLeft.getLayer(tempLayerId)) {
+        mapLeft.removeLayer(tempLayerId);
+      }
+      if (mapLeft.getSource(tempLayerId)) {
+        mapLeft.removeSource(tempLayerId);
+      }
+
+      // loading POI
+      const response = await fetch(pointFiles[layer.id]);
+      const data = await response.json();
+      const filtered = {
+        type: 'FeatureCollection',
+        features: data.features.filter(f => {
+          const [lng, lat] = f.geometry.coordinates;
+          return lng >= bbox[0][0] && lng <= bbox[1][0] && lat >= bbox[0][1] && lat <= bbox[1][1];
+        })
+      };
+
+      mapLeft.addSource(tempLayerId, { type: 'geojson', data: filtered });
+      mapLeft.addLayer({
+        id: tempLayerId,
+        type: 'circle',
+        source: tempLayerId,
+        paint: {
+          'circle-radius': 4,
+          'circle-color': layer.color[2],
+          'circle-opacity': 0.8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1
+        }
+      });
+
+      // add POI click point
+      mapLeft.on('click', tempLayerId, (e) => {
+  const displayText = pointDisplayNames[layer.id] || layer.id;
+  new mapboxgl.Popup()
+    .setLngLat(e.lngLat)
+    .setHTML(`<strong>${displayText}</strong>`)
+    .addTo(mapLeft);
+});
+
+      mapLeft.on('mouseenter', tempLayerId, () => {
+        mapLeft.getCanvas().style.cursor = 'pointer';
+      });
+
+      mapLeft.on('mouseleave', tempLayerId, () => {
+        mapLeft.getCanvas().style.cursor = '';
+      });
+    });
+  });
+  updateLegendBox();
+});
+
+mapRight.on('load', () => {
+  mapRight.addSource('safety', { 
+    type: 'geojson', 
+    data: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/Final_safety_score.geojson',
+    generateId: true
+  });
+  
+  mapRight.addLayer({
+    id: 'safety-line',
+    type: 'line',
+    source: 'safety',
+    paint: {
+      'line-width': 2.5,
+      'line-opacity': 0.6,
+      'line-color': [
+        'interpolate',
+        ['linear'],
+        ['get', 'safety_score'],
+        0, '#d73027',
+        0.4, '#f46d43',
+        0.6, '#fee08b',
+        0.8, '#91cf60',
+        1, '#1a9850'
+      ]
+    }
+  });
+
+  const safetyPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+
+  mapRight.on('mousemove', 'safety-line', (e) => {
+    const props = e.features[0].properties;
+const score = props.safety_score;
+
+let roadName = props.name_1 || props.name || props.display_name || props.display_na || props.street || 'Unnamed Street';
+if (roadName && (roadName === 'York' || roadName.includes('York, York and North Yorkshire'))) {
+  roadName = 'Unnamed Street';
+}
+
+    safetyPopup
+      .setLngLat(e.lngLat)
+      .setHTML(`<strong>${roadName}</strong><br>Safety Score: ${score.toFixed(3)}`)
+      .addTo(mapRight);
+  });
+
+  mapRight.on('mouseleave', 'safety-line', () => {
+    mapRight.getCanvas().style.cursor = '';
+    safetyPopup.remove();
+  });
+
+  mapRight.on('mouseenter', 'safety-line', () => {
+    mapRight.getCanvas().style.cursor = 'pointer';
+  });
+
+  mapRight.on('click', 'safety-line', (e) => {
+    if (e.features && e.features.length > 0) {
+      const coords = e.lngLat;
+      const buffer = 0.002;
+      const bbox = [
+        [coords.lng - buffer, coords.lat - buffer],
+        [coords.lng + buffer, coords.lat + buffer]
+      ];
+      mapRight.fitBounds(bbox, { padding: 100, duration: 1000 });
+
+      const props = e.features[0].properties;
+      const score = props.safety_score || 0;
+
+      let roadName = props.name_1 || props.name || props.display_name || props.display_na || props.street || 'Unnamed Street';
+if (roadName && (roadName === 'York' || roadName.includes('York, York and North Yorkshire'))) {
+  roadName = 'Unnamed Street';
+}
+        
+      const positiveScores = {
+        'bus': props.bus_score || 0,
+        'light': props.light_score || 0,
+        'CCTV': props.cctv_score || 0
+      };
+      const negativeScores = {
+        'crime': props.crime_score || 0,
+        'nightlife': props.night_score || 0
+      };
+      radarChart.data.datasets[0].data = [
+        positiveScores['bus'],
+        positiveScores['light'],
+        0,
+        positiveScores['CCTV'],
+        0
+      ];
+      radarChart.data.datasets[1].data = [
+        0,
+        0,
+        negativeScores['nightlife'],
+        0,
+        negativeScores['crime']
+      ];
+      radarChart.update();
+      new mapboxgl.Popup()
+        .setLngLat(e.lngLat)
+        .setHTML(`<strong>${roadName}</strong><br>Safety Score: ${score.toFixed(3)}`)
+        .addTo(mapRight);
+    }
+  });
+});
+
+function bringToFront(layerId) {
+  if (mapLeft.getLayer(layerId)) mapLeft.moveLayer(layerId);
+}
+function updateOpacity(id, value) {
+  mapLeft.setPaintProperty(id, 'line-opacity', parseFloat(value));
+}
+function toggleLayer(id, visible) {
+  mapLeft.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+}
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+function updateLegendBox() {
+  const legendContainer = document.getElementById('legend-content');
+  legendContainer.innerHTML = '';
+  let hasVisible = false;
+
+  if (typeof layers === 'undefined' || !Array.isArray(layers) || layers.length === 0) return;
+
+  layers.forEach(layer => {
+    let visibility = 'visible';
+    try {
+      if (!mapLeft.getLayer(layer.id)) return; 
+      visibility = mapLeft.getLayoutProperty(layer.id, 'visibility');
+    } catch (e) {
+      return;
+    }
+
+    if (visibility === 'visible') {
+      hasVisible = true;
+      const section = document.createElement('div');
+      section.className = 'legend-section';
+      section.innerHTML = `
+        <div class="legend-title">${layer.id === 'bus' ? 'Transit Stops' : (layer.id === 'nightlife' ? 'Nightlife Venues' : capitalize(layer.id))}</div>
+        <div class="legend-row"><span class="legend-color" style="background:rgba(255,255,255,1);"></span><span class="legend-value">None</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[0]};"></span><span class="legend-value">Low</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[1]};"></span><span class="legend-value">Medium</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[2]};"></span><span class="legend-value">High</span></div>
+      `;
+      legendContainer.appendChild(section);
+    }
+  });
+
+  if (!hasVisible) {
+    layers.forEach(layer => {
+      const section = document.createElement('div');
+      section.className = 'legend-section';
+      section.innerHTML = `
+        <div class="legend-title">${capitalize(layer.id)}</div>
+        <div class="legend-row"><span class="legend-color" style="background:rgba(255,255,255,1);"></span><span class="legend-value">None</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[0]};"></span><span class="legend-value">Low</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[1]};"></span><span class="legend-value">Medium</span></div>
+        <div class="legend-row"><span class="legend-color" style="background:${layer.color[2]};"></span><span class="legend-value">High</span></div>
+      `;
+      legendContainer.appendChild(section);
+    });
+  }
+}
+
+function resetView() {
+  mapLeft.flyTo({ center: [-1.08, 53.96], zoom: 12 });
+  mapRight.flyTo({ center: [-1.08, 53.96], zoom: 12 });
+  updateLegendBox();
+}
+
+
+const radarCtx = document.getElementById('radarChart').getContext('2d');
+const radarChart = new Chart(radarCtx, {
+  type: 'radar',
+  data: {
+    labels: ['Transit Stops', 'Light', 'Nightlife Venues', 'CCTV', 'Crime'],
+    datasets: [
+      {
+        label: 'Positive Factors',
+        data: [0, 0, 0, 0, 0],
+        backgroundColor: 'rgba(41, 118, 69, 0.2)', 
+        borderColor: '#297645',
+        pointBackgroundColor: '#297645',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: '#297645',
+        pointRadius: 4
+      },
+      {
+        label: 'Negative Factors',
+        data: [0, 0, 0, 0, 0],
+        backgroundColor: 'rgba(238, 106, 91, 0.2)',
+        borderColor: '#ee6a5b',
+        pointBackgroundColor: '#ee6a5b',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: '#ee6a5b',
+        pointRadius: 4
+      }
+    ]
+  },
+  options: {
+    scales: {
+      r: {
+        beginAtZero: true,
+        max: 1,
+        ticks: {
+          display: false,
+          stepSize: 0.5
+        },
+        pointLabels: {
+          color: '#ffffff',
+          font: {
+            size: 10
+          }
+        },
+        grid: {
+          color: 'rgba(255,255,255,0.15)'
+        },
+        angleLines: {
+          color: 'rgba(255,255,255,0.15)'
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: true,
+        align: 'center',
+        position: 'top',
+        labels: {
+          usePointStyle: true,
+          pointStyle: 'rectRounded',
+          boxWidth: 12,
+          boxHeight: 10,
+          padding: 10,
+          font: {
+            size: 11,
+            weight: 'normal'
+          },
+          color: '#fff'
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `${context.label}: ${context.raw.toFixed(2)}`;
+          }
+        }
+      },
+      datalabels: {
+        display: false
+      }
+    }
+  },
+  plugins: [ChartDataLabels]
+});
+
+window.addEventListener('DOMContentLoaded', function() {
+  if (typeof updateLegendBox === 'function') updateLegendBox();
+});
+setTimeout(function() {
+  if (typeof updateLegendBox === 'function') updateLegendBox();
+}, 1000);
+</script>
+</body>
+</html>
