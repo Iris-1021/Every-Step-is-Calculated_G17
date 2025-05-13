@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Safety Navigation Map for Women's Night-Time Travel in York</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+    <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.1/mapbox-gl-directions.css">
+    <script src="https://unpkg.com/@mapbox/polyline"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .side-panel {
+            position: absolute;
+            top: 40px;
+            left: 24px;
+            width: 240px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 12px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+            padding: 22px 16px 18px 16px;
+            z-index: 10;
+        }
+        .side-panel h2, .side-panel h3 {
+            margin: 0 0 12px 0;
+            color: #222;
+            font-weight: 600;
+        }
+        .mode-group, .duration-group, .category-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .mode-btn, .duration-btn, .category-btn {
+            flex: 1;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 0;
+            font-size: 15px;
+            font-weight: 500;
+            background: #f0f0f0;
+            color: #333;
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            transition: background 0.2s, color 0.2s;
+        }
+        .mode-btn.active, .duration-btn.active, .category-btn.active {
+            background: #2171b5;
+            color: #fff;
+        }
+        .category-btn { color: #fff; }
+        .category-btn.active { border: 2px solid #333; }
+        .safety-legend {
+            position: absolute;
+            bottom: 25px;
+            right: 12px;
+            background: rgba(80,80,80,0.85);
+            border: 2px solid rgba(225,225,225,0.18);
+            padding: 16px 18px 12px 18px;
+            border-radius: 12px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+            z-index: 10;
+        }
+        .safety-legend h3 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
+            color: #fff;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            color: #fff;
+        }
+        .legend-item span {
+            font-size: 12px;
+        }
+        .color-box {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        .safety-info {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            background: rgba(80,80,80,0.85);
+            border: 2px solid rgba(120,120,120,0.18);
+            padding: 18px 20px 14px 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+            z-index: 10;
+            max-width: 320px;
+        }
+        .safety-info h3 {
+            margin: 0 0 10px 0;
+            color: #ffffff;
+        }
+        .safety-info p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #ffffff;
+        }
+        .route-mode-switch {
+            display: flex;
+            background: #f5f6f7;
+            border-radius: 30px;
+            padding: 4px 8px;
+            width: fit-content;
+            margin: 24px auto 0 auto;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+            position: absolute;
+            left: 50%;
+            top: 16px;
+            transform: translateX(-50%);
+            z-index: 20;
+        }
+        .route-mode-btn {
+            border: none;
+            background: transparent;
+            color: #666;
+            font-size: 36px;
+            font-weight: 500;
+            padding: 8px 24px;
+            border-radius: 22px;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .route-mode-btn.active {
+            background: #e9ecef;
+            color: #222;
+            font-weight: 700;
+        }
+        .mapboxgl-ctrl-directions .mapboxgl-ctrl-group button[title="Traffic"] {
+            display: none !important;
+        }
+        .map-subtitle {
+    color: #F2CFB9;
+    font-size: 16px;
+    font-weight: bold;
+    margin: 0 0 8px 0;
+}
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="safety-legend">
+        <h3>Safety Classification</h3>
+        <div class="legend-item">
+            <div class="color-box" style="background: #009966;"></div>
+            <span>Highly Safe </span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #66bb6a;"></div>
+            <span>Relatively Safe </span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #ffe066;"></div>
+            <span>Neutral </span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #ff9800;"></div>
+            <span>Relatively Unsafe </span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: #e53935;"></div>
+            <span>Highly Unsafe </span>
+        </div>
+    </div>
+    <div class="safety-info">
+        <h2 class="map-subtitle">Choosing Her Path:<br>Women's Night-Time Route Risk Map</h2>
+        <div id="route-desc" style="color:#f2f2f2;font-size:13px;margin-bottom:8px;">
+  <strong>This map presents the optimal route for public transport, driving, walking, and cycling, and provides a breakdown of the total route length across different safety levels.</strong>
+</div>
+        <div id="route-stats" style="margin-top:12px;color:#f2f2f2;font-size:12px;">Select your origin and destination</div>
+        <div class="safety-progress-bar" style="margin:12px 0 0 0; height:18px; border-radius:9px; overflow:hidden; display:flex; background:#f0f0f0; display:none;">
+            <div class="bar very-safe" style="height:100%; background:#009966; width:0"></div>
+            <div class="bar safe" style="height:100%; background:#66bb6a; width:0"></div>
+            <div class="bar normal" style="height:100%; background:#ffe066; width:0"></div>
+            <div class="bar less-safe" style="height:100%; background:#ff9800; width:0"></div>
+            <div class="bar unsafe" style="height:100%; background:#e53935; width:0"></div>
+        </div>
+    </div>
+
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1IjoiY2FzYXRlc3QiLCJhIjoiY201ejZuMHN0MDExczJscXNwankwcWVzYyJ9.gqXja3EeV92I42mftXKgXg';
+        
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [-1.08, 53.96],
+            zoom: 12
+        });
+
+        map.on('load', () => {
+            // data of safety score
+            map.addSource('safety', {
+                type: 'geojson',
+                data: 'https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/Final_safety_score.geojson'
+            });
+
+            // safety score layer
+            map.addLayer({
+                id: 'safety-line',
+                type: 'line',
+                source: 'safety',
+                paint: {
+                    'line-width': 3,
+                    'line-opacity': 0.8,
+                    'line-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'safety_score'],
+                        0, '#e53935',
+                        0.4, '#ff9800',
+                        0.6, '#ffe066',
+                        0.8, '#66bb6a',
+                        1, '#009966'
+                    ]
+                }
+            });
+            // 替换“Traffic”为“Public Transport”
+setTimeout(() => {
+  const container = document.querySelector('.mapboxgl-ctrl-directions');
+  if (!container) return;
+
+  const allLabels = container.querySelectorAll('label');
+  allLabels.forEach(label => {
+    const text = label.innerText.trim();
+
+    // 只处理交通模式按钮，不影响A/B输入框
+    if (['Traffic', 'Driving', 'Walking', 'Cycling'].includes(text)) {
+      let icon = '';
+      if (text === 'Traffic') icon = '🚍';
+      if (text === 'Driving') icon = '🚗';
+      if (text === 'Walking') icon = '🚶‍♀️';
+      if (text === 'Cycling') icon = '🚴';
+
+      label.innerText = icon;
+
+      // ✅ 更小的图标和更紧凑的样式
+      label.style.fontSize = '18px';
+      label.style.padding = '6px 10px';
+      label.style.lineHeight = '1';
+      label.style.display = 'flex';
+      label.style.alignItems = 'center';
+      label.style.justifyContent = 'center';
+    }
+  });
+}, 1000);
+
+
+            //   navigation
+            const directions = new MapboxDirections({
+                accessToken: mapboxgl.accessToken,
+                unit: 'metric',
+                profile: 'mapbox/walking',
+                controls: {
+                    inputs: true,
+                    instructions: true
+                },
+                geometries: 'geojson'
+            });
+
+            map.addControl(directions, 'top-left');
+
+            //  highlight route and calculate the number
+            let startMarker = null, endMarker = null;
+            directions.on('route', async (e) => {
+
+                const progressBar = document.querySelector('.safety-progress-bar');
+                if(progressBar) progressBar.style.display = 'none';
+
+
+                const statsDiv = document.getElementById('route-stats');
+                if (statsDiv) statsDiv.innerHTML = 'loading...';
+
+                if (map.getLayer('highlight-route')) map.removeLayer('highlight-route');
+                if (map.getSource('highlight-route')) map.removeSource('highlight-route');
+            
+                if (startMarker) startMarker.remove();
+                if (endMarker) endMarker.remove();
+
+    
+                const routeGeometry = e.route[0].geometry;
+                const decodedCoords = polyline.decode(routeGeometry).map(coord => [coord[1], coord[0]]);
+                
+                // 1. 获取所有评分线的所有点
+                let allSafetyPoints = [];
+                const safetyData = await fetch('https://raw.githubusercontent.com/Iris-1021/Every-Step-is-Calculated_G17/main/Final_safety_score.geojson').then(r=>r.json());
+                safetyData.features.forEach(f => {
+                    if (f.geometry.type === 'LineString') {
+                        allSafetyPoints.push(...f.geometry.coordinates);
+                    }
+                });
+
+                // 2. 路线吸附到最近评分线点
+                function snapToNearestLine(point, linePoints) {
+                    let minDist = Infinity, nearest = point;
+                    linePoints.forEach(p => {
+                        const d = turf.distance(turf.point(point), turf.point(p));
+                        if (d < minDist) {
+                            minDist = d;
+                            nearest = p;
+                        }
+                    });
+                    return nearest;
+                }
+                const snappedCoords = decodedCoords.map(pt => snapToNearestLine(pt, allSafetyPoints));
+
+                // 用吸附后的路线进行后续操作
+                const routeLine = turf.lineString(snappedCoords);
+                const bufferedRoute = turf.buffer(routeLine, 0.001, {units: 'kilometers'});
+
+                // 添加路线高亮（用吸附后的路线）
+                const routeGeoJSON = {
+                    type: 'Feature',
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: snappedCoords
+                    }
+                };
+                map.addSource('highlight-route', {
+                    type: 'geojson',
+                    data: routeGeoJSON
+                });
+                map.addLayer({
+                    id: 'highlight-route',
+                    type: 'line',
+                    source: 'highlight-route',
+                    paint: {
+                        'line-width': 7,
+                        'line-color': '#009966',
+                        'line-opacity': 0.9
+                    }
+                });
+                // 添加起终点标记（用吸附后的点）
+                if (snappedCoords.length > 0) {
+                    startMarker = new mapboxgl.Marker({color:'#6EC1E4'})
+                        .setLngLat(snappedCoords[0])
+                        .setPopup(new mapboxgl.Popup().setText('起点'))
+                        .addTo(map);
+                    endMarker = new mapboxgl.Marker({color:'#9B8CC1'})
+                        .setLngLat(snappedCoords[snappedCoords.length-1])
+                        .setPopup(new mapboxgl.Popup().setText('终点'))
+                        .addTo(map);
+                }
+
+                // 分段唯一归属法统计
+                let verySafeLen = 0, safeLen = 0, normalLen = 0, lessSafeLen = 0, unsafeLen = 0;
+                for (let i = 0; i < snappedCoords.length - 1; i++) {
+                    const segStart = snappedCoords[i];
+                    const segEnd = snappedCoords[i + 1];
+                    const segLine = turf.lineString([segStart, segEnd]);
+                    const segLen = turf.length(segLine, {units: 'kilometers'});
+                    // 取中点
+                    const mid = [(segStart[0] + segEnd[0]) / 2, (segStart[1] + segEnd[1]) / 2];
+                    let minDist = Infinity, nearestScore = null;
+                    safetyData.features.forEach(f => {
+                        if (f.geometry.type !== 'LineString') return;
+                        const line = turf.lineString(f.geometry.coordinates);
+                        const pt = turf.point(mid);
+                        const snapped = turf.nearestPointOnLine(line, pt);
+                        if (snapped.properties.dist < minDist) {
+                            minDist = snapped.properties.dist;
+                            nearestScore = f.properties.safety_score;
+                        }
+                    });
+                    if (nearestScore !== null) {
+                        if (nearestScore >= 0.8) verySafeLen += segLen;
+                        else if (nearestScore >= 0.6) safeLen += segLen;
+                        else if (nearestScore >= 0.4) normalLen += segLen;
+                        else if (nearestScore > 0) lessSafeLen += segLen;
+                        else unsafeLen += segLen;
+                    }
+                }
+                // 计算总路线长度
+                const totalRouteLength = turf.length(turf.lineString(snappedCoords), {units: 'kilometers'});
+                // 计算未分类路段长度
+                const totalClassifiedLength = verySafeLen + safeLen + normalLen + lessSafeLen + unsafeLen;
+                const unclassifiedLen = Math.max(0, totalRouteLength - totalClassifiedLength);
+
+                // 更新统计信息
+                if (statsDiv) {
+                    statsDiv.innerHTML = `
+                        <b>Route Statistics:</b><br>
+                        Distance through highly safe roads：<span style='color:#009966;font-weight:bold;text-shadow:0 0 2px #000,0 0 2px #000;'>${(verySafeLen*1000).toFixed(0)}m</span><br>
+                        Distance through relatively safe roads：<span style='color:#66bb6a;font-weight:bold;text-shadow:0 0 2px #000,0 0 2px #000;'>${(safeLen*1000).toFixed(0)}m</span><br>
+                        Distance through neutral roads：<span style='color:#FFD600;font-weight:bold;text-shadow:0 0 2px #000,0 0 2px #000;'>${(normalLen*1000).toFixed(0)}m</span><br>
+                        Distance through relatively unsafe roads：<span style='color:#ff9800;font-weight:bold;text-shadow:0 0 2px #000,0 0 2px #000;'>${(lessSafeLen*1000).toFixed(0)}m</span><br>
+                        Distance through highly unsafe roads：<span style='color:#e53935;font-weight:bold;text-shadow:0 0 2px #000,0 0 2px #000;'>${(unsafeLen*1000).toFixed(0)}m</span>
+                    `;
+                    // 显示健康条
+                    document.querySelector('.safety-progress-bar').style.display = 'flex';
+                    // 彩色进度条
+                    const total = verySafeLen + safeLen + normalLen + lessSafeLen + unsafeLen;
+                    const barPercents = total > 0 ? [verySafeLen, safeLen, normalLen, lessSafeLen, unsafeLen].map(x=>100*x/total) : [0,0,0,0,0];
+                    const barEls = document.querySelectorAll('.safety-progress-bar .bar');
+                    barEls.forEach((el,i)=>{ el.style.width = barPercents[i]+"%"; });
+                }
+            });
+
+            // 添加鼠标悬停效果
+            map.on('mouseenter', 'safety-line', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+
+            map.on('mouseleave', 'safety-line', () => {
+                map.getCanvas().style.cursor = '';
+            });
+
+            // 添加点击事件显示安全信息
+            map.on('click', 'safety-line', (e) => {
+                const props = e.features[0].properties;
+                const score = props.safety_score || 0;
+                const name = props.name_1 || props.name || props.display_name || props.display_na || props.street || 'Unnamed Street';
+                
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+                        <h3>${name}</h3>
+                        <p>Safety Score: ${score.toFixed(2)}</p>
+                        <p>Lighting Coverage: ${props.light_score ? 'Good' : 'Fair'}</p>
+                        <p>CCTV Presence: ${props.cctv_score ? 'YES' : 'NO'}</p>
+                        <p>Bus Stop: ${props.bus_score ? 'High' : 'Low'}</p>
+                    `)
+                    .addTo(map);
+            });
+        });
+    </script>
+</body>
+</html> 
