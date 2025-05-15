@@ -1,0 +1,832 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>约克3D地图 + 安全分色导航 + 3D视角路线动画演示</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    body, html {
+      margin:0; padding:0; height:100%; font-family: Arial, sans-serif;
+    }
+    #map {
+      position:absolute; top:0; bottom:0; width:100%;
+    }
+    #nav-panel {
+      position: absolute; top: 12px; right: 12px; width: 400px;
+      background: rgba(255,255,255,0.95);
+      padding: 16px 20px; border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      z-index: 10;
+    }
+    #safety-panel {
+      position: absolute; top: 12px; left: 12px; width: 260px;
+      background: rgba(255,255,255,0.95);
+      padding: 12px 16px; border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      z-index: 15;
+      font-size: 14px;
+      color: #333;
+      user-select: none;
+    }
+    #safety-panel h3 {
+      margin-top:0; margin-bottom:10px;
+      font-weight: 700;
+      font-size: 18px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 4px;
+    }
+    .safety-row {
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .level-label {
+      font-weight: 600;
+      flex: 1;
+    }
+    .level-value {
+      flex: 0 0 60px;
+      text-align: right;
+    }
+    .color-box {
+      display: inline-block;
+      width: 16px; height: 16px;
+      margin-right: 6px;
+      vertical-align: middle;
+      border-radius: 3px;
+    }
+    .safe-5 { background: #1a9641; }
+    .safe-4 { background: #a6d96a; }
+    .safe-3 { background: #ffffbf; }
+    .safe-2 { background: #fdae61; }
+    .safe-1 { background: #d7191c; }
+
+    #nav-panel label {
+      font-weight: 600;
+      font-size: 14px;
+      display: block;
+      margin-top: 8px;
+      margin-bottom: 6px;
+    }
+    #nav-panel input, #nav-panel select {
+      width: 100%; padding: 8px 10px; font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    #nav-panel button {
+      margin-top: 14px; width: 100%; padding: 10px;
+      font-weight: 700; font-size: 16px;
+      color: #555; border:none; border-radius: 5px;
+      background-color: #fde8f0;
+      cursor: pointer; transition: background-color 0.3s ease;
+    }
+    #nav-panel button:hover {
+      background-color: #f9a8d4;
+    }
+    #route-info {
+      margin-top: 10px;
+      font-size: 13px;
+      min-height: 40px;
+      color: #333;
+      word-break: break-word;
+      line-height: 1.3;
+    }
+
+    /* 动画播放按钮，位置左侧中间 */
+    #animateButton, #animate3DButton {
+      position: absolute;
+      left: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background-color: #fde8f0;
+      color: #555;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 20;
+      user-select: none;
+      transition: background-color 0.3s ease;
+    }
+    #animateButton:hover, #animate3DButton:hover {
+      background-color: #f9a8d4;
+    }
+    #animateButton:disabled, #animate3DButton:disabled {
+      background-color: #999;
+      cursor: not-allowed;
+    }
+
+    /* 2D按钮竖直居中 */
+    #animateButton {
+      top: 87%;
+      transform: translateY(-50%);
+    }
+
+    /* 新增3D动画按钮放在2D按钮下方 */
+    #animate3DButton {
+      top: 93%;
+      transform: translateY(-50%);
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="nav-panel">
+  <label for="startInput">起点邮编或地址</label>
+  <input id="startInput" type="text" placeholder="例如：YO10 5NB" value="" />
+
+  <label for="endInput">终点邮编或地址</label>
+  <input id="endInput" type="text" placeholder="例如：YO30 7BR" value="" />
+
+  <label for="modeSelect">选择出行方式</label>
+  <select id="modeSelect">
+    <option value="driving">开车</option>
+    <option value="walking">步行</option>
+    <option value="cycling">骑行</option>
+  </select>
+
+  <button id="navBtn">开始导航</button>
+
+  <div id="route-info">请输入起点和终点，选择出行方式后点击开始导航。</div>
+</div>
+
+<div id="safety-panel">
+  <h3>路线安全里程统计</h3>
+  <div class="safety-row"><span class="level-label"><span class="color-box safe-5"></span>非常安全 (0.8-1)</span><span id="dist-safe-5" class="level-value">0 m</span></div>
+  <div class="safety-row"><span class="level-label"><span class="color-box safe-4"></span>安全 (0.6-0.8)</span><span id="dist-safe-4" class="level-value">0 m</span></div>
+  <div class="safety-row"><span class="level-label"><span class="color-box safe-3"></span>一般 (0.4-0.6)</span><span id="dist-safe-3" class="level-value">0 m</span></div>
+  <div class="safety-row"><span class="level-label"><span class="color-box safe-2"></span>危险 (0.2-0.4)</span><span id="dist-safe-2" class="level-value">0 m</span></div>
+  <div class="safety-row"><span class="level-label"><span class="color-box safe-1"></span>最危险 (0-0.2)</span><span id="dist-safe-1" class="level-value">0 m</span></div>
+</div>
+
+<!-- 2D动画播放按钮 -->
+<button id="animateButton" disabled>▶ 2D Navigation</button>
+
+<!-- 新增3D动画播放按钮 -->
+<button id="animate3DButton" disabled>▶ 3D Navigation</button>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+<script>
+
+
+  mapboxgl.accessToken = 'pk.eyJ1IjoiY2FzYXRlc3QiLCJhIjoiY201ejZuMHN0MDExczJscXNwankwcWVzYyJ9.gqXja3EeV92I42mftXKgXg';
+
+const INIT_ZOOM = 16;
+const INIT_PITCH = 60;
+const INIT_BEARING = -20;
+const YORK_CENTER = [-1.0803, 53.9583];
+
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/casatest/cmapiod2u01mk01sk34wn9do0',
+  center: YORK_CENTER,
+  zoom: INIT_ZOOM,
+  pitch: INIT_PITCH,
+  bearing: INIT_BEARING,
+  antialias: true
+});
+
+let safetyStreetsGeojson = null;
+let startMarker = null;
+let endMarker = null;
+let userInteracted = false;
+let animationFrameId = null;
+
+// 线路所有坐标动画点串
+let animationRouteCoords = [];
+let animationIndex = 0;
+let isAnimating2D = false;
+let isAnimating3D = false;
+
+map.on('move', () => userInteracted = true);
+map.on('pitch', () => userInteracted = true);
+map.on('rotate', () => userInteracted = true);
+
+// 安全等级定义
+const safetyLevels = [
+  { id: 'safe-5', label: 'very-safe', min: 0.8, max: 1, color: '#1a9641' },
+  { id: 'safe-4', label: 'safe', min: 0.6, max: 0.8, color: '#a6d96a' },
+  { id: 'safe-3', label: 'average', min: 0.4, max: 0.6, color: '#ffffbf' },
+  { id: 'safe-2', label: 'dangerous', min: 0.2, max: 0.4, color: '#fdae61' },
+  { id: 'safe-1', label: 'very-dangerous', min: 0, max: 0.2, color: '#d7191c' }
+];
+
+// 动画点图层id和源
+const ANIM_POINT_SOURCE = 'anim-point-source';
+const ANIM_POINT_LAYER = 'anim-point-layer';
+
+// 动画按钮DOM
+const animateBtn = document.getElementById('animateButton');
+const animate3DBtn = document.getElementById('animate3DButton');
+const navPanel = document.getElementById('nav-panel');
+const safetyPanel = document.getElementById('safety-panel');
+
+// ========== Separate control parameters for 2D and 3D animations ==========
+const ANIMATION_SPEED_2D = 60;  // meters per second
+const ANIMATION_SPEED_3D = 30;
+
+const ZOOM_2D = 16;  // Zoom level for 2D animation
+const ZOOM_3D = 19;  // Zoom level for 3D animation
+
+const PITCH_2D = 0;
+const PITCH_3D = 70;
+
+const BEARING_TRANSITION_DURATION_2D = 0;
+const BEARING_TRANSITION_DURATION_3D = 100;
+
+map.on('load', () => {
+  const layers = map.getStyle().layers;
+  const labelLayerId = layers.find(
+    layer => layer.type === 'symbol' && layer.layout && layer.layout['text-field']
+  )?.id;
+
+  // 3D建筑
+  map.addLayer({
+    id: '3d-buildings',
+    source: 'composite',
+    'source-layer': 'building',
+    filter: ['==', 'extrude', 'true'],
+    type: 'fill-extrusion',
+    minzoom: 15,
+    paint: {
+      'fill-extrusion-color': '#aaa',
+      'fill-extrusion-height': ['get', 'height'],
+      'fill-extrusion-base': ['get', 'min_height'],
+      'fill-extrusion-opacity': 0.7
+    }
+  }, labelLayerId);
+
+  // 安全街道
+  loadSafetyData();
+
+  // 多颜色路线空图层
+  safetyLevels.forEach(level => {
+    map.addSource(level.label, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    map.addLayer({
+      id: `route-line-${level.label}`,
+      source: level.label,
+      type: 'line',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round'
+      },
+      paint: {
+        'line-color': level.color,
+        'line-width': 6,
+        'line-opacity': 0.8
+      }
+    });
+    map.moveLayer(`route-line-${level.label}`, '3d-buildings');
+  });
+
+  // 动画点初始空源和图层
+  map.addSource(ANIM_POINT_SOURCE, {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }
+  });
+  map.addLayer({
+    id: ANIM_POINT_LAYER,
+    type: 'circle',
+    source: ANIM_POINT_SOURCE,
+    paint: {
+      'circle-radius': 8,
+      'circle-color': '#f9a8d4',
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#fff'
+    }
+  });
+});
+
+async function loadSafetyData() {
+  try {
+    const resp = await fetch('Final_safety_score.geojson');
+    safetyStreetsGeojson = await resp.json();
+
+    map.addSource('safety-streets', {
+      type: 'geojson',
+      data: safetyStreetsGeojson
+    });
+
+    map.addLayer({
+      id: 'safety-streets-layer',
+      type: 'line',
+      source: 'safety-streets',
+      paint: {
+        'line-color': '#888',
+        'line-width': 2,
+        'line-opacity': 0.3
+      }
+    });
+  } catch (e) {
+    console.error('加载安全街道数据失败:', e);
+    alert('无法加载安全街道数据，请确认Final_safety_score.geojson文件存在且路径正确。');
+    safetyStreetsGeojson = null;
+  }
+}
+
+async function geocode(query) {
+  const q = encodeURIComponent(query);
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${q}.json?access_token=${mapboxgl.accessToken}&country=GB&limit=1`;
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.features && data.features.length > 0) {
+      return data.features[0].center;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function updateMarkers(startLngLat, endLngLat) {
+  if (startMarker) startMarker.remove();
+  if (endMarker) endMarker.remove();
+
+  startMarker = new mapboxgl.Marker({ color: 'green' }).setLngLat(startLngLat).addTo(map);
+  endMarker = new mapboxgl.Marker({ color: 'red' }).setLngLat(endLngLat).addTo(map);
+}
+
+function getSafetyLevel(score) {
+  if (score >= 0.8) return 'very-safe';
+  if (score >= 0.6) return 'safe';
+  if (score >= 0.4) return 'average';
+  if (score >= 0.2) return 'dangerous';
+  return 'very-dangerous';
+}
+
+function buildColoredRouteFeatures(routeGeojson, safetyGeojson) {
+  if (!routeGeojson || !safetyGeojson) return {};
+
+  let results = {
+    'very-safe': [],
+    'safe': [],
+    'average': [],
+    'dangerous': [],
+    'very-dangerous': []
+  };
+
+  const coords = routeGeojson.geometry.coordinates;
+
+  function addSegment(label, segment) {
+    const arr = results[label];
+    if (arr.length === 0) {
+      arr.push(segment);
+      return;
+    }
+    const last = arr[arr.length - 1];
+    const lastCoords = last.geometry.coordinates;
+    if (lastCoords[lastCoords.length - 1].toString() === segment.geometry.coordinates[0].toString()) {
+      last.geometry.coordinates = lastCoords.concat(segment.geometry.coordinates.slice(1));
+    } else {
+      arr.push(segment);
+    }
+  }
+
+  for (let i = 0; i < coords.length - 1; i++) {
+    const start = coords[i];
+    const end = coords[i + 1];
+    const lineSegment = turf.lineString([start, end]);
+    const segLength = turf.length(lineSegment, { units: 'meters' });
+
+    const midPoint = turf.along(lineSegment, segLength / 2, { units: 'meters' });
+    const buffer = turf.buffer(midPoint, 15, { units: 'meters' });
+
+    const candidates = safetyGeojson.features.filter(f => turf.booleanIntersects(buffer, f));
+    let safetyScore = null;
+    if (candidates.length === 0) {
+      safetyScore = 0.5;
+    } else {
+      candidates.sort((a, b) => {
+        const da = turf.pointToLineDistance(midPoint, a, { units: 'meters' });
+        const db = turf.pointToLineDistance(midPoint, b, { units: 'meters' });
+        return da - db;
+      });
+      safetyScore = Number(candidates[0].properties.safety_score);
+      if (isNaN(safetyScore)) safetyScore = 0.5;
+    }
+
+    const safetyLabel = getSafetyLevel(safetyScore);
+    addSegment(safetyLabel, lineSegment);
+  }
+
+  Object.keys(results).forEach(label => {
+    results[label] = {
+      type: 'FeatureCollection',
+      features: results[label]
+    };
+  });
+
+  return results;
+}
+
+function calculateDistancesByLevel(coloredRoutes) {
+  let distMap = {
+    'very-safe': 0,
+    'safe': 0,
+    'average': 0,
+    'dangerous': 0,
+    'very-dangerous': 0
+  };
+  if (!coloredRoutes) return distMap;
+  Object.entries(coloredRoutes).forEach(([label, fc]) => {
+    let sum = 0;
+    fc.features.forEach(feature => {
+      sum += turf.length(feature, { units: 'meters' });
+    });
+    distMap[label] = sum;
+  });
+  return distMap;
+}
+
+function updateSafetyPanel(distMap) {
+  document.getElementById('dist-safe-5').textContent = Math.round(distMap['very-safe']) + ' m';
+  document.getElementById('dist-safe-4').textContent = Math.round(distMap.safe) + ' m';
+  document.getElementById('dist-safe-3').textContent = Math.round(distMap.average) + ' m';
+  document.getElementById('dist-safe-2').textContent = Math.round(distMap.dangerous) + ' m';
+  document.getElementById('dist-safe-1').textContent = Math.round(distMap['very-dangerous']) + ' m';
+}
+
+// 更新地图上分色路线图层
+function updateColoredRouteLayers(coloredRoutes) {
+  if (!coloredRoutes) {
+    safetyLevels.forEach(level => {
+      if (map.getSource(level.label)) map.getSource(level.label).setData({ type: 'FeatureCollection', features: [] });
+    });
+    return;
+  }
+  safetyLevels.forEach(level => {
+    if (map.getSource(level.label)) {
+      map.getSource(level.label).setData(coloredRoutes[level.label] || { type: 'FeatureCollection', features: [] });
+    }
+  });
+}
+
+// 通过LineString坐标插值生成均匀步进点，保证动画流畅
+function densifyLine(coordinates, stepMeters = 10) {
+  const line = turf.lineString(coordinates);
+  const length = turf.length(line, { units: 'meters' });
+  if (length === 0) return [];
+
+  const points = [];
+  for (let dist = 0; dist <= length; dist += stepMeters) {
+    const p = turf.along(line, dist, { units: 'meters' });
+    points.push(p.geometry.coordinates);
+  }
+  // 确保终点包含
+  if(points.length === 0 || points[points.length-1].toString() !== coordinates[coordinates.length-1].toString()){
+    points.push(coordinates[coordinates.length-1]);
+  }
+  return points;
+}
+
+// 更新动画点GeoJSON数据
+function setAnimationPoint(lngLat) {
+  if (!map.getSource(ANIM_POINT_SOURCE)) return;
+
+  if (!lngLat) {
+    map.getSource(ANIM_POINT_SOURCE).setData({
+      type: 'FeatureCollection',
+      features: []
+    });
+    return;
+  }
+
+  map.getSource(ANIM_POINT_SOURCE).setData({
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: lngLat
+      }
+    }]
+  });
+}
+
+// 导航面板显示/隐藏函数
+function hideNavPanel() {
+  if(navPanel) navPanel.style.display = 'none';
+}
+
+function showNavPanel() {
+  if(navPanel) navPanel.style.display = '';
+}
+
+// 线路安全里程面板显示隐藏函数
+function hideSafetyPanel() {
+  if(safetyPanel) safetyPanel.style.display = 'none';
+}
+
+function showSafetyPanel() {
+  if(safetyPanel) safetyPanel.style.display = '';
+}
+
+// 动画控制变量
+let animationStartTime2D = null;
+let animationStartTime3D = null;
+let totalDistance = 0;
+let cumulativeDistances = []; // 坐标点对应的累计距离（米）
+
+// 取消所有动画
+function cancelAllAnimations() {
+  if(animationFrameId){
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+  isAnimating2D = false;
+  isAnimating3D = false;
+  animateBtn.textContent = "▶ 2D Navigation";
+  animateBtn.disabled = false;
+  animate3DBtn.textContent = "▶ 3D Navigation";
+  animate3DBtn.disabled = false;
+
+  // 恢复建筑原透明度
+  if(map.getLayer('3d-buildings')){
+    map.setPaintProperty('3d-buildings', 'fill-extrusion-opacity', 0.7);
+  }
+
+  showNavPanel();
+  showSafetyPanel();
+}
+
+// 计算两点间的方位角，用于3D动画视角转向
+function calculateBearing(coord1, coord2) {
+  return turf.bearing(turf.point(coord1), turf.point(coord2));
+}
+
+// 2D动画函数
+function animateRoute2D(time) {
+  if (!animationStartTime2D) animationStartTime2D = time;
+  const elapsed = (time - animationStartTime2D) / 1000; // 秒
+
+  const distanceCovered = elapsed * ANIMATION_SPEED_2D;
+
+  let i = 0;
+  while(i < cumulativeDistances.length && cumulativeDistances[i] < distanceCovered){
+    i++;
+  }
+
+  if(i === 0){
+    setAnimationPoint(animationRouteCoords[0]);
+    map.easeTo({center: animationRouteCoords[0], zoom: ZOOM_2D, pitch: PITCH_2D, bearing: INIT_BEARING, duration: 0});
+  } else if(i >= cumulativeDistances.length){
+    setAnimationPoint(animationRouteCoords[animationRouteCoords.length -1]);
+    cancelAllAnimations();
+    return;
+  } else {
+    const distPrev = cumulativeDistances[i - 1];
+    const distNext = cumulativeDistances[i];
+    const ratio = (distanceCovered - distPrev) / (distNext - distPrev);
+    const coordPrev = animationRouteCoords[i - 1];
+    const coordNext = animationRouteCoords[i];
+    const lng = coordPrev[0] + (coordNext[0] - coordPrev[0]) * ratio;
+    const lat = coordPrev[1] + (coordNext[1] - coordPrev[1]) * ratio;
+    const currentCoord = [lng, lat];
+    setAnimationPoint(currentCoord);
+
+    map.easeTo({
+      center: currentCoord,
+      zoom: ZOOM_2D,
+      pitch: PITCH_2D,
+      bearing: INIT_BEARING,
+      duration: BEARING_TRANSITION_DURATION_2D
+    });
+  }
+  animationFrameId = requestAnimationFrame(animateRoute2D);
+}
+
+// 3D动画函数：播放时建筑透明度设为0，线路看清晰
+function animateRoute3D(time) {
+  if (!animationStartTime3D) animationStartTime3D = time;
+  const elapsed = (time - animationStartTime3D) / 1000;
+
+  const distanceCovered = elapsed * ANIMATION_SPEED_3D;
+
+  let i = 0;
+  while(i < cumulativeDistances.length && cumulativeDistances[i] < distanceCovered){
+    i++;
+  }
+
+  if(i === 0){
+    setAnimationPoint(animationRouteCoords[0]);
+    map.easeTo({
+      center: animationRouteCoords[0],
+      zoom: ZOOM_3D,
+      bearing: INIT_BEARING,
+      pitch: PITCH_3D,
+      duration: 0
+    });
+  } else if(i >= cumulativeDistances.length){
+    setAnimationPoint(animationRouteCoords[animationRouteCoords.length -1]);
+    cancelAllAnimations();
+    return;
+  } else {
+    const distPrev = cumulativeDistances[i - 1];
+    const distNext = cumulativeDistances[i];
+    const ratio = (distanceCovered - distPrev) / (distNext - distPrev);
+    const coordPrev = animationRouteCoords[i - 1];
+    const coordNext = animationRouteCoords[i];
+    const lng = coordPrev[0] + (coordNext[0] - coordPrev[0]) * ratio;
+    const lat = coordPrev[1] + (coordNext[1] - coordPrev[1]) * ratio;
+    const currentCoord = [lng, lat];
+    setAnimationPoint(currentCoord);
+
+    // 计算视角朝向，转向下一点或保持当前
+    let bearing = INIT_BEARING;
+    if(i < animationRouteCoords.length - 1){
+      bearing = calculateBearing(currentCoord, animationRouteCoords[i+1]);
+    }
+
+    map.easeTo({
+      center: currentCoord,
+      zoom: ZOOM_3D,
+      pitch: PITCH_3D,
+      bearing: bearing,
+      duration: BEARING_TRANSITION_DURATION_3D
+    });
+  }
+
+  animationFrameId = requestAnimationFrame(animateRoute3D);
+}
+
+// 2D动画按钮事件
+animateBtn.addEventListener('click', () => {
+  if(isAnimating2D){
+    cancelAllAnimations();
+    showNavPanel();
+    showSafetyPanel();
+  } else {
+    cancelAllAnimations();
+    if(animationRouteCoords.length < 2) return;
+
+    isAnimating2D = true;
+    animateBtn.textContent = "■ Stop";
+    animate3DBtn.disabled = true;
+    animationStartTime2D = null;
+
+    hideNavPanel();
+    hideSafetyPanel();
+
+    totalDistance = 0;
+    cumulativeDistances = [0];
+    for(let i=1; i < animationRouteCoords.length; i++){
+      totalDistance += turf.distance(turf.point(animationRouteCoords[i-1]), turf.point(animationRouteCoords[i]), {units:'meters'});
+      cumulativeDistances.push(totalDistance);
+    }
+    animationFrameId = requestAnimationFrame(animateRoute2D);
+  }
+});
+
+// 3D动画按钮事件
+animate3DBtn.addEventListener('click', () => {
+  if(isAnimating3D){
+    cancelAllAnimations();
+    showNavPanel();
+    showSafetyPanel();
+  } else {
+    cancelAllAnimations();
+    if(animationRouteCoords.length < 2) return;
+
+    isAnimating3D = true;
+    animate3DBtn.textContent = "■ Stop";
+    animateBtn.disabled = true;
+    animationStartTime3D = null;
+
+    hideNavPanel();
+    hideSafetyPanel();
+
+    totalDistance = 0;
+    cumulativeDistances = [0];
+    for(let i=1; i < animationRouteCoords.length; i++){
+      totalDistance += turf.distance(turf.point(animationRouteCoords[i-1]), turf.point(animationRouteCoords[i]), {units:'meters'});
+      cumulativeDistances.push(totalDistance);
+    }
+
+    // 动画开始时将建筑透明度设置为0，使得建筑“消失”
+    if(map.getLayer('3d-buildings')){
+      map.setPaintProperty('3d-buildings', 'fill-extrusion-opacity', 0);
+    }
+
+    animationFrameId = requestAnimationFrame(animateRoute3D);
+  }
+});
+
+async function doNavigation(startStr, endStr, mode) {
+  const infoDiv = document.getElementById('route-info');
+  infoDiv.textContent = '地址转换中，请稍候...';
+
+  const startCoords = await geocode(startStr);
+  const endCoords = await geocode(endStr);
+
+  if (!startCoords) {
+    infoDiv.textContent = `无法识别起点地址/邮编: ${startStr}`;
+    return;
+  }
+  if (!endCoords) {
+    infoDiv.textContent = `无法识别终点地址/邮编: ${endStr}`;
+    return;
+  }
+
+  updateMarkers(startCoords, endCoords);
+
+  infoDiv.textContent = '正在规划路线...';
+
+  const validModes = ['driving', 'walking', 'cycling'];
+  if (!validModes.includes(mode)) {
+    mode = 'driving';
+  }
+
+  const url = `https://api.mapbox.com/directions/v5/mapbox/${mode}/${startCoords[0]},${startCoords[1]};${endCoords[0]},${endCoords[1]}?geometries=geojson&access_token=${mapboxgl.accessToken}`;
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!data.routes || data.routes.length === 0) {
+      infoDiv.textContent = '未找到有效路径';
+      updateColoredRouteLayers(null);
+      updateSafetyPanel({ 'very-safe': 0, 'safe': 0, 'average': 0, 'dangerous': 0, 'very-dangerous': 0 });
+      animationRouteCoords = [];
+      animateBtn.disabled = true;
+      animate3DBtn.disabled = true;
+      cancelAllAnimations();
+      setAnimationPoint(null);
+      return;
+    }
+    const routeGeojson = {
+      type: 'Feature',
+      geometry: data.routes[0].geometry
+    };
+
+    if (safetyStreetsGeojson) {
+      const coloredRoutes = buildColoredRouteFeatures(routeGeojson, safetyStreetsGeojson);
+      updateColoredRouteLayers(coloredRoutes);
+      const distMap = calculateDistancesByLevel(coloredRoutes);
+      updateSafetyPanel(distMap);
+    } else {
+      updateColoredRouteLayers(null);
+      updateSafetyPanel({ 'very-safe': 0, 'safe': 0, 'average': 0, 'dangerous': 0, 'very-dangerous': 0 });
+    }
+
+    animationRouteCoords = densifyLine(routeGeojson.geometry.coordinates, 5);
+
+    const enableAnim = animationRouteCoords.length >= 2;
+    animateBtn.disabled = !enableAnim;
+    animate3DBtn.disabled = !enableAnim;
+
+    if(animationRouteCoords.length > 0){
+      setAnimationPoint(animationRouteCoords[0]);
+    }else{
+      setAnimationPoint(null);
+    }
+    cancelAllAnimations();
+
+    // 这里改动核心: 每次导航都统一调整视角到起点中心，包含缩放和俯仰方向与初始状态一致
+    map.easeTo({
+      center: startCoords,
+      zoom: INIT_ZOOM,
+      pitch: INIT_PITCH,
+      bearing: INIT_BEARING,
+      duration: 2000
+    });
+
+    const distKm = (data.routes[0].distance / 1000).toFixed(2);
+    const durationMin = Math.ceil(data.routes[0].duration / 60);
+    infoDiv.innerHTML = `<b>路线信息（${mode}模式）：</b><br>距离: ${distKm} 公里<br>预计时间: ${durationMin} 分钟`;
+
+  } catch (err) {
+    infoDiv.textContent = '路线请求失败：' + err.message;
+    updateColoredRouteLayers(null);
+    updateSafetyPanel({ 'very-safe': 0, 'safe': 0, 'average': 0, 'dangerous': 0, 'very-dangerous': 0 });
+    animationRouteCoords = [];
+    animateBtn.disabled = true;
+    animate3DBtn.disabled = true;
+    cancelAllAnimations();
+    setAnimationPoint(null);
+  }
+}
+
+document.getElementById('navBtn').addEventListener('click', () => {
+  const startStr = document.getElementById('startInput').value.trim();
+  const endStr = document.getElementById('endInput').value.trim();
+  const mode = document.getElementById('modeSelect').value;
+  if (!startStr || !endStr) {
+    alert('请填写起点和终点地址或邮编');
+    return;
+  }
+  doNavigation(startStr, endStr, mode);
+});
+
+
+</script>
+
+</body>
+</html>
